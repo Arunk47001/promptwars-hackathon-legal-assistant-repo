@@ -20,6 +20,7 @@ from fastapi import APIRouter, Form, HTTPException, UploadFile
 
 from app.classification import classify_document
 from app.explanation import generate_explanation
+from app.gemini_client import GeminiCallError
 from app.guardrails import build_guardrail
 from app.ingestion import UnsupportedFileTypeError, ingest_document
 from app.models import (
@@ -51,6 +52,11 @@ async def create_document(
         result = ingest_document(file_bytes=file_bytes, content_type=content_type)
     except UnsupportedFileTypeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GeminiCallError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Document ingestion is temporarily unavailable (Gemini API error). Please try again in a moment.",
+        ) from exc
 
     # PII masking (C6) applied here, before persistence — NOT before the
     # ingestion call above, per the plan's accepted POC-level limitation.
@@ -113,7 +119,13 @@ def _get_or_404(document_id: str):
 @router.post("/{document_id}/actions/classify", response_model=ClassifyResponse)
 def classify(document_id: str) -> ClassifyResponse:
     record = _get_or_404(document_id)
-    result = classify_document(record.masked_text)
+    try:
+        result = classify_document(record.masked_text)
+    except GeminiCallError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Classification is temporarily unavailable (Gemini API error). Please try again in a moment.",
+        ) from exc
     record.document_type = result.document_type
     record.high_stakes = result.high_stakes
     record.high_stakes_reasons = result.high_stakes_reasons
@@ -141,8 +153,14 @@ def explain(document_id: str) -> ExplanationResponse:
         guardrail = build_guardrail(high_stakes=True)
         return _high_stakes_explanation_response(document_id, guardrail)
 
-    english = generate_explanation(record.masked_text, language="english")
-    kannada = generate_explanation(record.masked_text, language="kannada")
+    try:
+        english = generate_explanation(record.masked_text, language="english")
+        kannada = generate_explanation(record.masked_text, language="kannada")
+    except GeminiCallError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Explanation is temporarily unavailable (Gemini API error). Please try again in a moment.",
+        ) from exc
     from app.config import get_settings
 
     settings = get_settings()
@@ -189,7 +207,13 @@ def red_flags(document_id: str) -> RedFlagResponse:
             guardrail=build_guardrail(high_stakes=True),
         )
 
-    flags = detect_red_flags(record.masked_text)
+    try:
+        flags = detect_red_flags(record.masked_text)
+    except GeminiCallError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Red-flag detection is temporarily unavailable (Gemini API error). Please try again in a moment.",
+        ) from exc
     return RedFlagResponse(
         document_id=document_id,
         flags=flags,
@@ -216,7 +240,13 @@ def qa(document_id: str, body: QARequest) -> QAResponse:
             guardrail=guardrail,
         )
 
-    result = answer_question(document_text=record.masked_text, question=body.question)
+    try:
+        result = answer_question(document_text=record.masked_text, question=body.question)
+    except GeminiCallError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Q&A is temporarily unavailable (Gemini API error). Please try again in a moment.",
+        ) from exc
 
     if body.session_id:
         session = store.get_session(body.session_id)

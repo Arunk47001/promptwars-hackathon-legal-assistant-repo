@@ -146,23 +146,68 @@ def call_pro_multimodal(
     return _live_multimodal_call(model, file_bytes, mime_type, prompt)
 
 
+# Observed live (2026-09-23): Gemini returns a transient 503 UNAVAILABLE
+# ("model is currently experiencing high demand") on a real fraction of
+# requests, confirmed both in local ad hoc testing and in production on
+# Render. Retrying a couple of times with a short backoff clears it in
+# practice. 429 RESOURCE_EXHAUSTED (real quota exhaustion) is deliberately
+# NOT retried here -- retrying won't help and just burns more quota.
+_RETRYABLE_STATUS_MARKERS = ("503", "UNAVAILABLE")
+_MAX_ATTEMPTS = 5
+_RETRY_BACKOFF_SECONDS = (2, 5, 10, 15)
+# Render (unlike serverless) has no hard per-request timeout, which is
+# explicitly why it was chosen for this backend -- so a ~30s worst-case
+# retry budget here is acceptable rather than failing fast on transient
+# 503s observed to occur in bursts lasting longer than a couple of retries.
+
+
+def _is_retryable(exc: Exception) -> bool:
+    text = str(exc)
+    return any(marker in text for marker in _RETRYABLE_STATUS_MARKERS)
+
+
+def _call_with_retry(fn, *, label: str) -> Any:
+    import time
+
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            return fn()
+        except Exception as exc:  # pragma: no cover - live path, no network in sandbox
+            last_exc = exc
+            if attempt < _MAX_ATTEMPTS and _is_retryable(exc):
+                delay = _RETRY_BACKOFF_SECONDS[min(attempt - 1, len(_RETRY_BACKOFF_SECONDS) - 1)]
+                logger.warning(
+                    "%s attempt %d/%d hit a retryable error, retrying in %ss: %s",
+                    label,
+                    attempt,
+                    _MAX_ATTEMPTS,
+                    delay,
+                    exc,
+                )
+                time.sleep(delay)
+                continue
+            logger.exception("%s failed (attempt %d/%d, non-retryable or out of attempts)", label, attempt, _MAX_ATTEMPTS)
+            raise GeminiCallError(str(exc)) from exc
+    raise GeminiCallError(str(last_exc))  # pragma: no cover - unreachable, satisfies type checker
+
+
 def _live_text_call(model: str, prompt: str, system_instruction: str | None) -> GeminiResponse:
-    try:
+    def _do_call() -> GeminiResponse:
         client = _get_client()
         kwargs: dict[str, Any] = {"model": model, "contents": prompt}
         if system_instruction:
             kwargs["config"] = {"system_instruction": system_instruction}
         response = client.models.generate_content(**kwargs)
         return GeminiResponse(text=response.text, model=model, mock=False, raw=response)
-    except Exception as exc:  # pragma: no cover - live path, no network in sandbox
-        logger.exception("Live Gemini text call failed")
-        raise GeminiCallError(str(exc)) from exc
+
+    return _call_with_retry(_do_call, label=f"Gemini text call ({model})")
 
 
 def _live_multimodal_call(
     model: str, file_bytes: bytes, mime_type: str, prompt: str
 ) -> GeminiResponse:
-    try:
+    def _do_call() -> GeminiResponse:
         from google.genai import types  # type: ignore
 
         client = _get_client()
@@ -172,9 +217,8 @@ def _live_multimodal_call(
             contents=[part, prompt],
         )
         return GeminiResponse(text=response.text, model=model, mock=False, raw=response)
-    except Exception as exc:  # pragma: no cover - live path, no network in sandbox
-        logger.exception("Live Gemini multimodal call failed")
-        raise GeminiCallError(str(exc)) from exc
+
+    return _call_with_retry(_do_call, label=f"Gemini multimodal call ({model})")
 
 
 def try_parse_json(text: str) -> Optional[dict]:
