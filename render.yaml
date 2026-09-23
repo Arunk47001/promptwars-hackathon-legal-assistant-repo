@@ -21,6 +21,12 @@ services:
     healthCheckPath: /health
     autoDeployTrigger: commit # D5: auto-deploy on push to the tracked branch
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7" # pinned: pydantic-core 2.23.4 (pydantic==2.9.2) has no
+        # prebuilt wheel on Render's newer default Python runtimes, which
+        # forces a from-source build that fails with no Rust toolchain
+        # available ("metadata-generation-failed" on pydantic-core). 3.12.7
+        # has confirmed prebuilt wheels for this pydantic-core version.
       - key: GEMINI_API_KEY
         sync: false # set manually in the Render dashboard, never committed
       - key: GEMINI_FLASH_MODEL
