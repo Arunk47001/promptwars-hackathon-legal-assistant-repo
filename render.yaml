@@ -1,0 +1,34 @@
+# Render Blueprint for Namma Nyaya backend (D1/D3/D4/D5/D7 prep).
+#
+# This file lets a human import the backend as a "New Blueprint" in the
+# Render dashboard (https://dashboard.render.com/blueprints) once this repo
+# is connected to Render's GitHub App — it does not itself create the
+# service (that step requires the GitHub App authorization, which is an
+# interactive, browser-based step only a human can complete).
+#
+# Secret values (GEMINI_API_KEY, etc.) are intentionally left as `sync: false`
+# so Render prompts for them in the dashboard rather than reading them from
+# this committed file — never put the real key value here.
+
+services:
+  - type: web
+    name: namma-nyaya-backend
+    runtime: python
+    plan: free # D7: free tier accepted for POC; upgrade to `starter` for always-on if budget allows
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit # D5: auto-deploy on push to the tracked branch
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false # set manually in the Render dashboard, never committed
+      - key: GEMINI_FLASH_MODEL
+        value: gemini-3.6-flash
+      - key: GEMINI_PRO_MODEL
+        value: gemini-pro-latest
+      - key: GEMINI_MOCK_MODE
+        value: "false"
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false # set to the deployed Vercel origin(s) once D2 is live, e.g.
+        # https://<project>.vercel.app,http://localhost:3000
