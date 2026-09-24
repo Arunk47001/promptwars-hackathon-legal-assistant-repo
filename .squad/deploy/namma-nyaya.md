@@ -178,10 +178,124 @@ any paid always-on upgrade, and no custom/production domain is in scope.
   behavior (enabled automatically when a repo is connected via their
   dashboards) covers it once D1/D2 are Git-connected to the pushed branch.
 
+## Post-deploy verification and fixes (2026-09-23, continued)
+
+After the above report, the user pushed `af7b27e` to `origin/main` and the
+remaining D1-D12 items were worked through interactively with live
+verification against the real deployed services (not simulated):
+
+- **D2 corrected**: the first `vercel --yes` run had auto-linked to a
+  **pre-existing** Vercel project literally named `frontend`
+  (`prj_cOhYp6tKQmP5dBiDIeF9zj2HXndO`) that already had an unrelated env var
+  (`VITE_COPILOTKIT_RUNTIME_URL`, ~22 days old) — almost certainly a
+  different old project on this account, not something that should have
+  silently absorbed Namma Nyaya's deploy. Fixed by creating a distinctly
+  named project (`vercel project add namma-nyaya-frontend`), unlinking
+  `.vercel`, relinking to the new project, and redeploying. **Live frontend:
+  https://namma-nyaya-frontend.vercel.app**
+- **D1 build failure fixed**: first Render build failed with
+  `metadata-generation-failed` on `pydantic-core` — Render's default Python
+  runtime had no prebuilt wheel for `pydantic-core` 2.23.4 (pinned via
+  `pydantic==2.9.2`), forcing a from-source build with no Rust toolchain
+  available. Fixed by pinning `PYTHON_VERSION=3.12.7` in `render.yaml`
+  (confirmed to have a wheel for this version) rather than touching
+  dependency versions. **Live backend: https://namma-nyaya-backend.onrender.com**
+  — `/health` returns `{"status":"ok"}`, `/docs` and `/openapi.json` both
+  200, and all 13 routes listed in the OpenAPI spec match the coder lane's
+  channel-agnostic design (`/documents`, `/sessions`, `/actions/*`).
+- **Gemini model names corrected**: live testing found `gemini-2.5-flash`/
+  `gemini-2.5-pro` (what the coder lane configured) are **retired for new
+  users** as of this date. Verified working replacements directly against
+  the live API: `gemini-3.6-flash` (confirmed working) and
+  `gemini-pro-latest` (confirmed as a *valid* name — it returned 429 quota,
+  not 404). Updated in `backend/.env`, `.env.example`, and `render.yaml`.
+- **C4 OCR spike — real positive signal obtained**: with the user's real key,
+  ran an ad hoc live multimodal test (synthetic code-mixed Kannada/English
+  rental-agreement image → Gemini) and got an accurate transcription +
+  correct Kannada→English translation. Logged in
+  `backend/docs/c4_ocr_spike_log.md` as a preliminary positive signal, NOT a
+  full go/no-go (tested a clean synthetic image, not a real scan — the team
+  should still run `scripts/run_ocr_spike.py` against a real scanned
+  document before fully trusting this in front of judges).
+- **CORS wiring completed live**: verified via `OPTIONS` preflight requests
+  that `CORS_ALLOWED_ORIGINS` on Render correctly allows
+  `https://namma-nyaya-frontend.vercel.app` (after the user updated it on
+  the Render dashboard — no non-interactive path existed for this).
+- **Functional smoke test (partial)**: `/actions/law-mapping?section=420&code=IPC`
+  correctly returns the IPC 420 → BNS 318 mapping;
+  `/actions/navigator/playbooks` correctly returns both seeded playbooks.
+  These endpoints are rule-based (no Gemini dependency) and are confirmed
+  fully working end-to-end on the live deployment.
+- **Critical bug found and fixed — no retry/error handling for Gemini
+  failures**: the live document-ingestion smoke test (`POST /documents` with
+  a real image) surfaced two real, serious issues:
+  1. `GEMINI_PRO_MODEL=gemini-pro-latest` returns `429 RESOURCE_EXHAUSTED` on
+     this free-tier key (0 effective quota for pro-class models without
+     billing). Fixed by pointing `GEMINI_PRO_MODEL` at the same working
+     `gemini-3.6-flash` model as a pragmatic POC workaround (documented in
+     `render.yaml`/`.env`/`.env.example` with a note to revert once billing
+     is enabled).
+  2. Gemini genuinely returns transient `503 UNAVAILABLE` ("high demand")
+     errors on a real fraction of requests — confirmed both locally and in
+     Render's production logs (user-provided traceback). There was **no
+     retry logic anywhere** in `app/gemini_client.py`, so any transient 503
+     surfaced to the end user as a bare, unhelpful `500 Internal Server
+     Error`. Fixed in `backend/app/gemini_client.py`: added
+     `_call_with_retry` with up to 5 attempts and increasing backoff
+     (2/5/10/15s) for 503/UNAVAILABLE specifically (429 quota errors are
+     deliberately NOT retried, since retrying can't fix real quota
+     exhaustion and would just waste more of it). Also updated
+     `backend/app/routers/documents.py` so all Gemini-dependent endpoints
+     (ingest/classify/explain/red-flags/qa) catch `GeminiCallError` and
+     return a clean `503` with a user-facing "try again in a moment"
+     message instead of a bare 500. All 30 backend tests still pass; local
+     testing confirmed a real ingestion call succeeding on the 4th retry
+     attempt against live Gemini.
+- **BLOCKING FINDING — free-tier daily quota is far too low for a live
+  demo.** While testing the fix above, hit
+  `RESOURCE_EXHAUSTED` with an explicit quota message: `limit: 20`,
+  `quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier`, for
+  `gemini-3.6-flash`. **This project's Google AI Studio key is capped at 20
+  requests per day, per model, on the free tier.** This is a hard ceiling
+  that today's combined testing (Kannada spike, repeated connectivity
+  checks, and the retry logic itself — a single failed ingestion attempt
+  can cost up to 5 requests against this same cap) has now exhausted for
+  `gemini-3.6-flash`. **This will not survive a real demo in front of
+  judges** — a single walkthrough (upload, classify, explain in two
+  languages, red-flags, one Q&A question) can easily cost 5-10+ requests on
+  its own. Presented three options to the user (enable billing on the
+  backing Google Cloud project to remove the cap, use a different/fresh AI
+  Studio key, or conserve remaining quota and wait for the daily reset).
+  **User chose to wait for the quota reset and conserve remaining calls** —
+  no further live Gemini calls were made after this finding. **This is the
+  single most important open risk for judging day and should be revisited
+  well before the demo**, ideally by enabling billing (Gemini Flash-tier
+  pricing is low per request) rather than relying on a fresh 20/day
+  allowance that a real demo can burn through in one run-through.
+
 ## Status
 
-In progress — 2026-09-23. Blocked on: (1) explicit confirmation to push the
-local commit `af7b27e` to `origin/main`, (2) a Render account/dashboard
-action from you (no non-interactive path exists), (3) explicit Bash
-permission (or you running it yourself) for the Vercel deploy command that
-was auto-denied this run.
+**Substantially deployed and live**, with one serious open risk. Live URLs:
+- Backend: https://namma-nyaya-backend.onrender.com (healthy, all routes
+  responding, rule-based endpoints fully verified working)
+- Frontend: https://namma-nyaya-frontend.vercel.app (builds and serves
+  correctly; wired to the backend via `NEXT_PUBLIC_API_BASE_URL`)
+
+**Verified working end-to-end**: law-mapping, navigator playbooks (no Gemini
+dependency), CORS between the two live services, and — via local testing
+with the live API — the full Gemini ingestion pipeline (including retry
+logic recovering from real transient 503s).
+
+**Not yet verified live end-to-end**: a full document upload → classify →
+explain → red-flags → Q&A walkthrough against the *live Render deployment*
+specifically, because the shared free-tier Gemini quota (20 requests/day/
+model) was exhausted by today's combined testing before that final full run
+could be completed. D11 (idle-then-wake "stays live after judging" check)
+and D12 (team acknowledgment of the Streamlit fallback trigger) are also
+still outstanding.
+
+**Action needed before judging**: resolve the quota ceiling (billing is the
+robust fix) and then run one full live walkthrough against
+https://namma-nyaya-frontend.vercel.app to confirm the complete user journey
+end-to-end, ideally with some request budget held in reserve for the actual
+judging session itself.

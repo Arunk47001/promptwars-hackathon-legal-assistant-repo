@@ -12,7 +12,7 @@ export default function RedFlagList({ flags }: { flags: RedFlag[] }) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
   if (flags.length === 0) {
-    return <p>No red flags detected in this document.</p>;
+    return <p className="hint-text">No red flags detected in this document.</p>;
   }
 
   return (
@@ -24,15 +24,17 @@ export default function RedFlagList({ flags }: { flags: RedFlag[] }) {
           title={`${flag.explanation} — ${flag.citation}`}
           onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}
         >
-          <strong>{flag.category.replace(/_/g, " ")}</strong>{" "}
-          <span className={`severity-badge severity-${flag.severity}`}>
-            {flag.severity}
-          </span>
-          <div>&ldquo;{flag.clause_excerpt}&rdquo;</div>
+          <div className="red-flag-head">
+            <strong>{flag.category.replace(/_/g, " ")}</strong>
+            <span className={`severity-badge severity-${flag.severity}`}>
+              {flag.severity}
+            </span>
+          </div>
+          <div className="red-flag-excerpt">&ldquo;{flag.clause_excerpt}&rdquo;</div>
           {expandedIndex === i && (
-            <div style={{ marginTop: "0.5rem" }}>
+            <div className="red-flag-detail">
               <p>{flag.explanation}</p>
-              <p>
+              <p className="citation-text">
                 <em>Citation: {flag.citation}</em>
               </p>
             </div>

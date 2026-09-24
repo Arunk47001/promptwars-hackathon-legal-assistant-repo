@@ -2,21 +2,30 @@
 
 import { useState } from "react";
 import type { ExplanationResponse } from "@/lib/api";
-import LanguageToggle, { type Language } from "./LanguageToggle";
+import { useLanguage } from "./LanguageProvider";
 import LegalAidRedirect from "./LegalAidRedirect";
 
 type Level = "gist" | "clause_by_clause" | "legal_view";
 
+const LEVEL_LABELS: Record<Level, string> = {
+  gist: "One-line gist",
+  clause_by_clause: "Clause-by-clause",
+  legal_view: "Legal view",
+};
+
 /**
  * C17: explanation panel with working EN/KN and gist/clause/legal-view
- * toggles, backed by live API data (ExplanationResponse from C10).
+ * toggles, backed by live API data (ExplanationResponse from C10). The
+ * language toggle itself now lives in the top nav (a site-wide preference,
+ * see LanguageProvider) so switching it there updates any open explanation
+ * in place.
  */
 export default function ExplanationPanel({
   explanation,
 }: {
   explanation: ExplanationResponse;
 }) {
-  const [language, setLanguage] = useState<Language>("english");
+  const { language } = useLanguage();
   const [level, setLevel] = useState<Level>("gist");
 
   if (explanation.guardrail.high_stakes) {
@@ -36,40 +45,24 @@ export default function ExplanationPanel({
   return (
     <div>
       <h2>Explanation</h2>
-      <LanguageToggle value={language} onChange={setLanguage} />
       <div className="toggle-group">
-        <button
-          className={`toggle ${level === "gist" ? "active" : ""}`}
-          onClick={() => setLevel("gist")}
-          type="button"
-        >
-          One-line gist
-        </button>
-        <button
-          className={`toggle ${level === "clause_by_clause" ? "active" : ""}`}
-          onClick={() => setLevel("clause_by_clause")}
-          type="button"
-        >
-          Clause-by-clause
-        </button>
-        <button
-          className={`toggle ${level === "legal_view" ? "active" : ""}`}
-          onClick={() => setLevel("legal_view")}
-          type="button"
-        >
-          Legal view
-        </button>
+        {(Object.keys(LEVEL_LABELS) as Level[]).map((l) => (
+          <button
+            key={l}
+            className={`toggle ${level === l ? "active" : ""}`}
+            onClick={() => setLevel(l)}
+            type="button"
+          >
+            {LEVEL_LABELS[l]}
+          </button>
+        ))}
       </div>
       <div className="doc-text">{levelText}</div>
       {levels.citations.length > 0 && (
-        <p style={{ fontSize: "0.8rem", color: "#555" }}>
-          Citations: {levels.citations.join(", ")}
-        </p>
+        <p className="citation-text">Citations: {levels.citations.join(", ")}</p>
       )}
       {explanation.mock && (
-        <p style={{ fontSize: "0.75rem", color: "#a94442" }}>
-          (offline mock mode — not a live Gemini response)
-        </p>
+        <p className="mock-note">(offline mock mode — not a live Gemini response)</p>
       )}
     </div>
   );

@@ -180,10 +180,68 @@ any paid always-on upgrade, and no custom/production domain is in scope.
   behavior (enabled automatically when a repo is connected via their
   dashboards) covers it once D1/D2 are Git-connected to the pushed branch.
 
-## Status
+## Status (as of initial report)
 
 In progress — 2026-09-23. Blocked on: (1) explicit confirmation to push the
 local commit `af7b27e` to `origin/main`, (2) a Render account/dashboard
 action from you (no non-interactive path exists), (3) explicit Bash
 permission (or you running it yourself) for the Vercel deploy command that
 was auto-denied this run.
+
+## 2026-09-23 (continued — post-push live verification and fixes)
+
+After the push, D1-D12 were worked through interactively with live
+verification against the real deployed services:
+
+- **D2 corrected**: `vercel --yes` had auto-linked to a pre-existing,
+  unrelated Vercel project named `frontend` (had a 22-day-old
+  `VITE_COPILOTKIT_RUNTIME_URL` env var from a different project). Fixed by
+  creating a distinct `namma-nyaya-frontend` project, relinking, redeploying.
+  **Live: https://namma-nyaya-frontend.vercel.app**
+- **D1 build failure fixed**: Render build failed on `pydantic-core`
+  (`metadata-generation-failed`) — no prebuilt wheel on Render's default
+  Python runtime, no Rust toolchain to build from source. Fixed by pinning
+  `PYTHON_VERSION=3.12.7` in `render.yaml`. **Live:
+  https://namma-nyaya-backend.onrender.com** — `/health`, `/docs`,
+  `/openapi.json` all 200; all 13 routes match the channel-agnostic design.
+- **Gemini model names corrected**: `gemini-2.5-flash`/`gemini-2.5-pro` are
+  retired for new users. Verified live replacements: `gemini-3.6-flash`
+  (working) and `gemini-pro-latest` (valid name, but see quota finding
+  below). Updated in `.env`, `.env.example`, `render.yaml`.
+- **C4 OCR spike — real positive signal**: live multimodal test (synthetic
+  code-mixed Kannada/English image) produced an accurate transcription +
+  translation. Logged in `backend/docs/c4_ocr_spike_log.md` as preliminary
+  positive, NOT a full go/no-go (clean synthetic image, not a real scan —
+  still recommend running `scripts/run_ocr_spike.py` against a real scan).
+- **CORS wiring completed live**: verified via `OPTIONS` preflight that
+  Render's `CORS_ALLOWED_ORIGINS` correctly allows the live Vercel origin.
+- **Functional smoke test (partial)**: `/actions/law-mapping` (IPC 420 → BNS
+  318) and `/actions/navigator/playbooks` confirmed fully working live
+  (rule-based, no Gemini dependency).
+- **Critical bug found and fixed**: live document ingestion surfaced (1)
+  `gemini-pro-latest` returns `429 RESOURCE_EXHAUSTED` on this free-tier key
+  (fixed by pointing `GEMINI_PRO_MODEL` at the working flash model as a POC
+  workaround) and (2) Gemini genuinely returns transient `503 UNAVAILABLE`
+  errors with **no retry logic anywhere** in the codebase, surfacing as bare
+  500s. Fixed in `app/gemini_client.py` (retry with backoff, 5 attempts,
+  2/5/10/15s, for 503 only — not 429) and `app/routers/documents.py` (clean
+  503 responses instead of bare 500s on all Gemini-dependent endpoints). All
+  30 tests still pass; confirmed a real ingestion call succeeding on the 4th
+  retry attempt against live Gemini.
+- **BLOCKING FINDING**: hit `RESOURCE_EXHAUSTED` with an explicit quota
+  message — **this AI Studio key is capped at 20 requests/day/model on the
+  free tier**, exhausted by today's combined testing (including the retry
+  logic's own consumption). **A single live demo walkthrough can easily cost
+  5-10+ requests and will not survive this cap.** Presented three options
+  (enable billing / fresh key / wait+conserve) — **user chose to wait for
+  the quota reset and conserve remaining calls.** No further live Gemini
+  calls were made after this finding. Flagged as the single most important
+  open risk for judging day.
+
+**Final status**: substantially deployed and live (both URLs above
+confirmed working), with the Gemini daily-quota ceiling as the one serious
+open risk still needing resolution (ideally billing) before judging. Full
+live end-to-end walkthrough (upload → explain → red-flags → Q&A) against the
+live deployment specifically is still unconfirmed due to the quota
+exhaustion; D11 (idle/wake check) and D12 (team fallback acknowledgment)
+also remain outstanding.

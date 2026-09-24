@@ -4,6 +4,16 @@ import { useState } from "react";
 import { api, type LawMappingResponse } from "@/lib/api";
 import DisclaimerBanner from "@/components/DisclaimerBanner";
 
+const CODE_OPTIONS = [
+  { value: "", label: "Any code" },
+  { value: "IPC", label: "IPC" },
+  { value: "CrPC", label: "CrPC" },
+  { value: "Evidence Act", label: "Evidence Act" },
+  { value: "BNS", label: "BNS" },
+  { value: "BNSS", label: "BNSS" },
+  { value: "BSA", label: "BSA" },
+];
+
 /**
  * C21: standalone law-mapping lookup page calling C14, independent of any
  * uploaded document.
@@ -20,7 +30,7 @@ export default function LawMappingPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await api.lookupLawMapping(section.trim(), code.trim() || undefined);
+      const resp = await api.lookupLawMapping(section.trim(), code || undefined);
       setResult(resp);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lookup failed");
@@ -32,49 +42,66 @@ export default function LawMappingPage() {
   return (
     <main>
       <DisclaimerBanner />
-      <div style={{ padding: "1.5rem", maxWidth: 700 }}>
-        <h1>IPC/CrPC/Evidence Act ↔ BNS/BNSS/BSA lookup</h1>
-        <p>Look up an old or new section number — no document upload needed.</p>
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+      <div className="page-shell page-shell-narrow">
+        <h1 className="page-heading">Old section &rarr; new section</h1>
+        <p className="page-sub">
+          Find the new BNS, BNSS or BSA number for an IPC, CrPC or Evidence
+          Act section, or the other way round.
+        </p>
+        <div className="law-mapping-search">
           <input
-            placeholder="Section, e.g. 302"
+            className="mono-input"
+            placeholder="Section number, e.g. 420 or 103"
             value={section}
             onChange={(e) => setSection(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleLookup()}
           />
-          <input
-            placeholder="Code (optional), e.g. IPC or BNS"
+          <select
+            className="mono-input"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-          />
+            aria-label="Code"
+          >
+            {CODE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           <button className="primary" onClick={handleLookup} disabled={loading}>
             {loading ? "Looking up..." : "Look up"}
           </button>
         </div>
-        {error && <p style={{ color: "#a94442" }}>{error}</p>}
+        {error && <p className="error-text">{error}</p>}
 
         {result && (
-          <div className="panel">
+          <div className="law-mapping-results">
             {result.results.length === 0 ? (
               <p>No mapping found for &quot;{result.query}&quot;.</p>
             ) : (
-              <ul>
-                {result.results.map((m, i) => (
-                  <li key={i}>
-                    <strong>
-                      {m.old_code} {m.old_section}
-                    </strong>{" "}
-                    ↔{" "}
-                    <strong>
-                      {m.new_code} {m.new_section}
-                    </strong>
-                    — {m.description}
-                  </li>
-                ))}
-              </ul>
+              result.results.map((m, i) => (
+                <div className="law-mapping-row" key={i}>
+                  <span className="mono-label old-section">
+                    {m.old_code} {m.old_section}
+                  </span>
+                  <span className="law-mapping-arrow" aria-hidden="true">
+                    &rarr;
+                  </span>
+                  <span className="mono-label new-section">
+                    {m.new_code} {m.new_section}
+                  </span>
+                  <span className="law-mapping-description">{m.description}</span>
+                </div>
+              ))
             )}
           </div>
         )}
+
+        <p className="page-footnote">
+          BNS, BNSS and BSA replaced the IPC, CrPC and Evidence Act from 1 July
+          2024. Offences before that date are still tried under the old
+          codes.
+        </p>
       </div>
     </main>
   );

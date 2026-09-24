@@ -7,6 +7,7 @@ export default function LegalAidRedirect({ message }: { message: string }) {
     <div className="legal-aid-redirect" role="alert">
       <h3>This needs a lawyer, not this app</h3>
       <p>{message}</p>
+      <p className="legal-aid-hotline">Free legal aid: 15100</p>
     </div>
   );
 }

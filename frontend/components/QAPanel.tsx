@@ -32,9 +32,8 @@ export default function QAPanel({ documentId }: { documentId: string }) {
   return (
     <div className="qa-panel">
       <h2>Ask a question</h2>
-      <div style={{ display: "flex", gap: "0.5rem" }}>
+      <div className="qa-input-row">
         <input
-          style={{ flex: 1 }}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAsk()}
@@ -45,7 +44,7 @@ export default function QAPanel({ documentId }: { documentId: string }) {
           {loading ? "Asking..." : "Ask"}
         </button>
       </div>
-      {error && <p style={{ color: "#a94442" }}>{error}</p>}
+      {error && <p className="error-text">{error}</p>}
 
       {history
         .slice()
@@ -66,7 +65,7 @@ export default function QAPanel({ documentId }: { documentId: string }) {
               <div className="qa-answer">
                 <strong>Q: {qa.question}</strong>
                 <p>{qa.answer}</p>
-                {qa.citation && <p>Citation: {qa.citation}</p>}
+                {qa.citation && <p className="citation-text">Citation: {qa.citation}</p>}
                 <span className={`confidence-badge confidence-${qa.confidence}`}>
                   Confidence: {qa.confidence}
                 </span>

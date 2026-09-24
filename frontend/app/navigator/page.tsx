@@ -55,46 +55,67 @@ export default function NavigatorPage() {
   return (
     <main>
       <DisclaimerBanner />
-      <div style={{ padding: "1.5rem", maxWidth: 800 }}>
-        <h1>Navigator — what do I do now?</h1>
-        <div className="toggle-group">
+      <div className="page-shell">
+        <h1 className="page-heading">What do I do now?</h1>
+        <p className="page-sub">Pick your situation. We&apos;ll lay out the steps and draft the first letter for you.</p>
+
+        <div className="situation-grid">
           {playbooks.map((p) => (
             <button
               key={p.id}
-              className={`toggle ${selected === p.id ? "active" : ""}`}
+              type="button"
+              className={`situation-card ${selected === p.id ? "active" : ""}`}
               onClick={() => {
                 setSelected(p.id);
                 setResult(null);
               }}
-              type="button"
             >
-              {p.title}
+              <span className="situation-title">{p.title}</span>
+              <span className="situation-description">{p.description}</span>
             </button>
           ))}
         </div>
-        {selected && (
-          <div className="panel">
-            <p>{playbooks.find((p) => p.id === selected)?.description}</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 400 }}>
-              <input
-                placeholder="Your name / tenant name"
-                onChange={(e) => setFacts((f) => ({ ...f, tenant_name: e.target.value, buyer_name: e.target.value }))}
-              />
-              <input
-                placeholder="Other party name (landlord/builder)"
-                onChange={(e) => setFacts((f) => ({ ...f, landlord_name: e.target.value, builder_name: e.target.value }))}
-              />
-              <input
-                placeholder="Deposit amount / project name"
-                onChange={(e) => setFacts((f) => ({ ...f, deposit_amount: e.target.value, project_name: e.target.value }))}
-              />
+
+        {selected ? (
+          <div className="panel facts-panel">
+            <span className="mono-label">A few facts</span>
+            <div className="facts-fields">
+              <label>
+                Your name
+                <input
+                  placeholder="Your name / tenant name"
+                  onChange={(e) => setFacts((f) => ({ ...f, tenant_name: e.target.value, buyer_name: e.target.value }))}
+                />
+              </label>
+              <label>
+                Other party
+                <input
+                  placeholder="Other party name (landlord/builder)"
+                  onChange={(e) => setFacts((f) => ({ ...f, landlord_name: e.target.value, builder_name: e.target.value }))}
+                />
+              </label>
+              <label>
+                Amount / project
+                <input
+                  placeholder="Deposit amount / project name"
+                  onChange={(e) => setFacts((f) => ({ ...f, deposit_amount: e.target.value, project_name: e.target.value }))}
+                />
+              </label>
             </div>
-            <button className="primary" onClick={handleRun} disabled={loading} style={{ marginTop: "0.75rem" }}>
+            <button className="primary primary-block" onClick={handleRun} disabled={loading}>
               {loading ? "Generating..." : "Generate playbook"}
             </button>
           </div>
+        ) : (
+          <div className="empty-hint-box">
+            <p>
+              Fill in what you know and generate. You&apos;ll get the forum to
+              approach, a rough timeline and cost, a document checklist and an
+              editable draft.
+            </p>
+          </div>
         )}
-        {error && <p style={{ color: "#a94442" }}>{error}</p>}
+        {error && <p className="error-text">{error}</p>}
 
         {result && (
           <div className="panel" style={{ marginTop: "1rem" }}>
@@ -108,13 +129,13 @@ export default function NavigatorPage() {
             <p>
               <strong>Cost:</strong> {result.cost}
             </p>
-            <h3>Required documents</h3>
+            <h3 className="section-heading">Required documents</h3>
             <ul>
               {result.required_documents.map((d, i) => (
                 <li key={i}>{d}</li>
               ))}
             </ul>
-            <h3>Generated draft</h3>
+            <h3 className="section-heading">Generated draft</h3>
             <div className="doc-text">{result.draft}</div>
             <button className="primary" onClick={handleDownload} style={{ marginTop: "0.75rem" }}>
               Download draft

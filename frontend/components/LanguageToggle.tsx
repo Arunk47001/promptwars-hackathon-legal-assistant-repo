@@ -2,6 +2,8 @@
 
 /**
  * C2/C17: EN/KN language-toggle stub, later wired live in C17.
+ * Rendered in the top nav (site-wide preference) and reused anywhere an
+ * explanation's displayed language needs to be switched.
  */
 export type Language = "english" | "kannada";
 
@@ -13,16 +15,16 @@ export default function LanguageToggle({
   onChange: (lang: Language) => void;
 }) {
   return (
-    <div className="toggle-group" role="group" aria-label="Language">
+    <div className="lang-toggle" role="group" aria-label="Language">
       <button
-        className={`toggle ${value === "english" ? "active" : ""}`}
+        className={`lang-toggle-btn ${value === "english" ? "active" : ""}`}
         onClick={() => onChange("english")}
         type="button"
       >
-        EN
+        English
       </button>
       <button
-        className={`toggle ${value === "kannada" ? "active" : ""}`}
+        className={`lang-toggle-btn font-kannada ${value === "kannada" ? "active" : ""}`}
         onClick={() => onChange("kannada")}
         type="button"
       >
