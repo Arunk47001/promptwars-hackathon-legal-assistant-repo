@@ -58,6 +58,27 @@ SUPPORTED_MIME_TYPES = {
     "image/webp",
 }
 
+# Lightweight magic-byte / signature check (security remediation, 2026-09-26):
+# the client-declared Content-Type header is otherwise trusted with no
+# server-side verification that the actual bytes match. This is a simple,
+# defense-in-depth check -- not a full file-format validator -- since the
+# bytes are only ever forwarded to Gemini (no local parsing library that
+# malformed input could itself exploit).
+_MAGIC_SIGNATURES: dict[str, tuple[bytes, ...]] = {
+    "application/pdf": (b"%PDF-",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/jpg": (b"\xff\xd8\xff",),
+}
+
+
+def _matches_declared_content_type(content_type: str, file_bytes: bytes) -> bool:
+    if content_type == "image/webp":
+        # RIFF....WEBP: 4-byte "RIFF", 4-byte size, then "WEBP".
+        return file_bytes[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP"
+    signatures = _MAGIC_SIGNATURES.get(content_type, ())
+    return any(file_bytes.startswith(sig) for sig in signatures)
+
 
 @dataclass
 class IngestionResult:
@@ -82,6 +103,11 @@ def ingest_document(*, file_bytes: bytes, content_type: str) -> IngestionResult:
         raise UnsupportedFileTypeError(
             f"Unsupported content type '{content_type}'. Supported: "
             f"{sorted(SUPPORTED_MIME_TYPES)}"
+        )
+
+    if not _matches_declared_content_type(content_type, file_bytes):
+        raise UnsupportedFileTypeError(
+            f"File content does not match the declared content type '{content_type}'."
         )
 
     response: GeminiResponse = call_pro_multimodal(

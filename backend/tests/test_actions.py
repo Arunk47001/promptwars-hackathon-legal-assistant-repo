@@ -2,7 +2,7 @@ import io
 
 
 def _upload(client, filename="a.pdf"):
-    file_content = io.BytesIO(b"placeholder")
+    file_content = io.BytesIO(b"%PDF-1.4 placeholder")
     resp = client.post(
         "/documents",
         files={"file": (filename, file_content, "application/pdf")},

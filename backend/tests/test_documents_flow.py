@@ -83,7 +83,7 @@ def test_red_flags_detects_planted_issues(client):
 
 
 def test_red_flags_clean_document_has_no_false_flags(client):
-    file_content = io.BytesIO(b"placeholder")
+    file_content = io.BytesIO(b"%PDF-1.4 placeholder")
     resp = client.post(
         "/documents",
         files={"file": ("clean.pdf", file_content, "application/pdf")},
@@ -134,7 +134,7 @@ def test_qa_out_of_scope_question_returns_i_dont_know(client):
 
 
 def test_high_stakes_document_gets_legal_aid_redirect(client):
-    file_content = io.BytesIO(b"placeholder")
+    file_content = io.BytesIO(b"%PDF-1.4 placeholder")
     resp = client.post(
         "/documents",
         files={"file": ("hs.pdf", file_content, "application/pdf")},

@@ -16,9 +16,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 
 from app.classification import classify_document
+from app.config import get_settings
 from app.explanation import generate_explanation
 from app.gemini_client import GeminiCallError
 from app.guardrails import build_guardrail
@@ -34,18 +35,50 @@ from app.models import (
 )
 from app.pii import mask_pii
 from app.qa import answer_question
+from app.rate_limit import RATE_LIMIT, limiter
 from app.red_flags import detect_red_flags
 from app.storage import store
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
+_UPLOAD_READ_CHUNK_BYTES = 1024 * 1024  # 1 MB
+
+
+async def _read_upload_bounded(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an UploadFile's bytes incrementally, raising a clean 413 the
+    moment the running total exceeds `max_bytes`, rather than loading an
+    unbounded number of bytes into memory first. This is the authoritative
+    per-file size cap -- it holds even if the client sends no (or a
+    dishonest) Content-Length header, e.g. via chunked transfer-encoding.
+    """
+    total = 0
+    chunks: list[bytes] = []
+    while True:
+        chunk = await file.read(_UPLOAD_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    "File exceeds the maximum allowed size of "
+                    f"{max_bytes // (1024 * 1024)} MB."
+                ),
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 
 @router.post("", response_model=DocumentCreateResponse, status_code=201)
+@limiter.limit(RATE_LIMIT)
 async def create_document(
+    request: Request,
     file: UploadFile,
     session_id: Optional[str] = Form(default=None),
 ) -> DocumentCreateResponse:
-    file_bytes = await file.read()
+    max_bytes = get_settings().max_upload_bytes
+    file_bytes = await _read_upload_bounded(file, max_bytes)
     content_type = file.content_type or "application/octet-stream"
 
     try:
@@ -116,9 +149,11 @@ def _get_or_404(document_id: str):
     return record
 
 
-@router.post("/{document_id}/actions/classify", response_model=ClassifyResponse)
-def classify(document_id: str) -> ClassifyResponse:
-    record = _get_or_404(document_id)
+def _classify_record(document_id: str, record) -> ClassifyResponse:
+    """Core classify logic (C8), shared by the standalone `classify` route
+    and the other actions' internal auto-classify-if-needed step. Kept
+    request-free so those internal calls never touch the rate limiter (which
+    is applied once, at the actual route boundary a caller hits)."""
     try:
         result = classify_document(record.masked_text)
     except GeminiCallError as exc:
@@ -140,11 +175,19 @@ def classify(document_id: str) -> ClassifyResponse:
     )
 
 
+@router.post("/{document_id}/actions/classify", response_model=ClassifyResponse)
+@limiter.limit(RATE_LIMIT)
+def classify(request: Request, document_id: str) -> ClassifyResponse:
+    record = _get_or_404(document_id)
+    return _classify_record(document_id, record)
+
+
 @router.post("/{document_id}/actions/explain", response_model=ExplanationResponse)
-def explain(document_id: str) -> ExplanationResponse:
+@limiter.limit(RATE_LIMIT)
+def explain(request: Request, document_id: str) -> ExplanationResponse:
     record = _get_or_404(document_id)
     if record.high_stakes is None:
-        classify(document_id)
+        _classify_record(document_id, record)
         record = _get_or_404(document_id)
 
     if record.high_stakes:
@@ -161,7 +204,6 @@ def explain(document_id: str) -> ExplanationResponse:
             status_code=503,
             detail="Explanation is temporarily unavailable (Gemini API error). Please try again in a moment.",
         ) from exc
-    from app.config import get_settings
 
     settings = get_settings()
     return ExplanationResponse(
@@ -194,10 +236,11 @@ def _high_stakes_explanation_response(document_id: str, guardrail) -> Explanatio
 
 
 @router.post("/{document_id}/actions/red-flags", response_model=RedFlagResponse)
-def red_flags(document_id: str) -> RedFlagResponse:
+@limiter.limit(RATE_LIMIT)
+def red_flags(request: Request, document_id: str) -> RedFlagResponse:
     record = _get_or_404(document_id)
     if record.high_stakes is None:
-        classify(document_id)
+        _classify_record(document_id, record)
         record = _get_or_404(document_id)
 
     if record.high_stakes:
@@ -222,10 +265,11 @@ def red_flags(document_id: str) -> RedFlagResponse:
 
 
 @router.post("/{document_id}/actions/qa", response_model=QAResponse)
-def qa(document_id: str, body: QARequest) -> QAResponse:
+@limiter.limit(RATE_LIMIT)
+def qa(request: Request, document_id: str, body: QARequest) -> QAResponse:
     record = _get_or_404(document_id)
     if record.high_stakes is None:
-        classify(document_id)
+        _classify_record(document_id, record)
         record = _get_or_404(document_id)
 
     guardrail = build_guardrail(high_stakes=bool(record.high_stakes))

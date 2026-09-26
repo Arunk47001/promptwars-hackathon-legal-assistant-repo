@@ -47,10 +47,7 @@ current model names in use and a known limitation (the "pro" tier is
 currently pointed at the same model as the "flash" tier due to a free-tier
 quota constraint on the deployed key).
 
-## Live deployment
-
-- **Frontend**: https://namma-nyaya-frontend.vercel.app
-- **Backend API**: https://namma-nyaya-backend.onrender.com (`/health`, `/docs`)
+## Deployment
 
 Hosted on Vercel (frontend) + Render free tier (backend). The backend spins
 down after ~15 min idle and takes 30-50s to wake on the first request after

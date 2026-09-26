@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Security hardening (2026-09-26 remediation pass).
+    # Server-side cap on uploaded document size, matching the frontend UI's
+    # own "up to 10 MB" claim -- enforced here since nothing previously did.
+    max_upload_bytes: int = 10 * 1024 * 1024
+    # Basic per-IP rate limit applied to the Gemini-dependent endpoints
+    # (document upload/ingest, classify, explain, red-flags, qa) to protect
+    # the scarce/costly Gemini quota on this single-instance POC deployment.
+    rate_limit_per_minute: int = 20
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
