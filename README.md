@@ -13,6 +13,40 @@ for common situations. Built as a hackathon MVP slice — see
 `.squad/task/namma-nyaya.md` for the full spec/plan/task-breakdown chain
 this build was implemented from.
 
+## GenAI services used
+
+**Google Gemini**, via the Google AI Studio API (`google-genai` SDK), is the
+only GenAI service in this submission. It's called from four places in
+`backend/app/gemini_client.py`:
+
+- **Document ingestion / OCR** (`app/ingestion.py`) — the uploaded
+  image/PDF is sent directly to Gemini's native multimodal understanding
+  (no separate OCR service) to transcribe the document's full text,
+  including code-mixed English/Kannada content.
+- **Document classification & high-stakes detection** (`app/classification.py`)
+  — Gemini classifies the document type and flags high-stakes situations
+  (criminal, arrest, divorce, custody, large property deals) that should be
+  redirected to a lawyer instead of explained.
+- **Clause explanation** (`app/explanation.py`) — Gemini generates the
+  three-level explanation (one-line gist, clause-by-clause breakdown, legal
+  view with citations) in both English and Kannada.
+- **Cited Q&A** (`app/qa.py`) — Gemini answers free-text questions about the
+  uploaded document, citing the specific clause plus the relevant law, with
+  a confidence indicator and an explicit "I don't know" fallback when no
+  source supports an answer.
+
+Everything else in the app — red-flag detection, document compare/diff, the
+IPC/CrPC/Evidence Act → BNS/BNSS/BSA law-mapping lookup, and the "what do I
+do now" navigator playbooks — is deterministic/rule-based, not GenAI, by
+design (per `.squad/planner/namma-nyaya.md`'s "no made-up law" guardrail).
+
+The app uses a tiered-model strategy (a cheap/fast model for
+classification, a stronger model for explanation/Q&A/ingestion) — see
+`backend/app/gemini_client.py` and `.squad/deploy/namma-nyaya.md` for the
+current model names in use and a known limitation (the "pro" tier is
+currently pointed at the same model as the "flash" tier due to a free-tier
+quota constraint on the deployed key).
+
 ## Live deployment
 
 - **Frontend**: https://namma-nyaya-frontend.vercel.app
