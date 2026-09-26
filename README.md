@@ -1,10 +1,28 @@
 # Namma Nyaya
 
-A GenAI legal companion for Bengaluru — hackathon MVP slice covering rental
-agreements and offer letters for migrant tech professionals. See
+Namma Nyaya ("Our Justice") is a GenAI legal companion built for Bengaluru,
+India. Renters, job-seekers, and first-time signers upload a rental
+agreement or offer letter (photo, scan, or PDF, in English or Kannada) and
+get back a plain-language explanation, clause-by-clause and legal-view
+breakdowns, red-flag detection against known local pitfalls (excessive
+deposits, one-sided lock-ins, unenforceable non-competes), a document
+compare/diff tool, an old-to-new criminal law section mapper (IPC/CrPC →
+BNS/BNSS), and a "what do I do now" navigator with step-by-step playbooks
+for common situations. Built as a hackathon MVP slice — see
 `.squad/specification/namma-nyaya.md`, `.squad/planner/namma-nyaya.md`, and
 `.squad/task/namma-nyaya.md` for the full spec/plan/task-breakdown chain
 this build was implemented from.
+
+## Live deployment
+
+- **Frontend**: https://namma-nyaya-frontend.vercel.app
+- **Backend API**: https://namma-nyaya-backend.onrender.com (`/health`, `/docs`)
+
+Hosted on Vercel (frontend) + Render free tier (backend). The backend spins
+down after ~15 min idle and takes 30-50s to wake on the first request after
+that. See `.squad/deploy/namma-nyaya.md` for full deploy notes, including the
+open risk that the Gemini API key's free-tier daily quota (20 requests/day
+per model) is tight for a live demo.
 
 - `backend/` — Python/FastAPI, channel-agnostic resource-oriented API
   (`/documents`, `/sessions`, `/actions`), tiered Gemini wrappers, PII
